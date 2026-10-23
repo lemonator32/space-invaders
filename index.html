@@ -9,11 +9,57 @@
   canvas { display:block; width:100%; max-width:900px; height:auto; margin:0 auto; border:1px solid rgba(125,255,219,.22); background:radial-gradient(circle at 50% 35%, #081019, #010204 65%); image-rendering:pixelated; }
   .help { margin-top:8px; color:#8fa8a0; font-size:13px; }
   .help b { color:#c8ffed; font-weight:600; }
+  .controls { margin-top:14px; display:flex; justify-content:space-between; align-items:center; gap:18px; padding:10px 12px 4px; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; }
+  .controls button { border:1px solid rgba(125,255,219,.28); background:linear-gradient(#10151d,#05070c); color:#c8ffed; font-family:inherit; letter-spacing:1px; border-radius:999px; box-shadow:0 4px 0 rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08); cursor:pointer; }
+  .controls button:active, .controls button.on { background:#223038; box-shadow:0 2px 0 rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06); transform:translateY(1px); }
+  .gb-left, .gb-right { display:flex; align-items:center; gap:24px; }
+  .dpad { position:relative; width:112px; height:112px; }
+  .dpad button { position:absolute; width:38px; height:38px; border-radius:7px; font-size:18px; line-height:1; padding:0; }
+  .dpad .left { left:0; top:37px; }
+  .dpad .right { right:0; top:37px; }
+  .hub { position:absolute; left:37px; top:37px; width:38px; height:38px; border:1px solid rgba(125,255,219,.12); background:#05070c; border-radius:7px; }
+  .center { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .small { padding:8px 14px; border-radius:8px; transform:rotate(-28deg); font-size:11px; }
+  .start { margin-left:14px; }
+  .ab { display:flex; align-items:center; gap:8px; }
+  .ab button { width:50px; height:50px; border-radius:50%; font-size:14px; }
+  .a { position:relative; top:-16px; background:linear-gradient(#281018,#08040a); border-color:rgba(255,106,106,.42); color:#ffd7e6; }
+  .b { position:relative; bottom:-12px; background:linear-gradient(#182010,#050804); }
+  @media (max-width:640px) {
+    .controls { flex-wrap:wrap; justify-content:center; gap:12px; padding:8px 6px; }
+    .gb-left { order:1; flex-direction:column; gap:12px; }
+    .gb-right { order:2; }
+    .center { order:3; flex-direction:row; }
+    .dpad { width:92px; height:92px; }
+    .dpad button { width:30px; height:30px; font-size:16px; }
+    .dpad .left, .dpad .right { top:31px; }
+    .hub { left:31px; top:31px; width:30px; height:30px; }
+    .ab button { width:44px; height:44px; }
+  }
 </style>
 <main>
   <h1>Space Invaders</h1>
   <canvas id="game" width="900" height="620"></canvas>
-  <div class="help"><b>← →</b> or <b>A D</b> move · <b>Space</b> fire · <b>Enter</b> start/restart · <b>P</b> pause · <b>M</b> mute</div>
+  <div class="controls" aria-label="GameBoy-style touch controls">
+    <div class="gb-left">
+      <div class="dpad">
+        <button class="left" type="button" aria-label="Move left">←</button>
+        <span class="hub" aria-hidden="true"></span>
+        <button class="right" type="button" aria-label="Move right">→</button>
+      </div>
+      <div class="center">
+        <button class="small select" type="button" aria-label="Select/mute">SELECT</button>
+        <button class="small start" type="button" aria-label="Start/pause">START</button>
+      </div>
+    </div>
+    <div class="gb-right">
+      <div class="ab">
+        <button class="b" type="button" aria-label="B fire">B</button>
+        <button class="a" type="button" aria-label="A fire">A</button>
+      </div>
+    </div>
+  </div>
+  <div class="help"><b>← →</b> or <b>A D</b> move · <b>Space</b> fire · <b>Enter</b> start/restart · <b>P</b> pause · <b>M</b> mute · <b>Touch</b>: D-pad, A/B fire, START, SELECT</div>
 </main>
 <script>
 const canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
@@ -55,6 +101,37 @@ addEventListener('keydown', e=>{
   if((k==='m'||k==='M')){ muted=!muted; if(!muted) audio(); }
 });
 addEventListener('keyup', e=>{ keys[e.key]=false; });
+const touch={left:false,right:false,fire:false};
+function gameButton(sel){ return document.querySelector(sel); }
+function clearTouchVisual(){ document.querySelectorAll('.controls .on').forEach(el=>el.classList.remove('on')); }
+function clearTouch(){ touch.left=false; touch.right=false; touch.fire=false; clearTouchVisual(); }
+function bindHold(el, prop){
+  if(!el) return;
+  const release=e=>{ touch[prop]=false; el.classList.remove('on'); try{ if(el.hasPointerCapture && el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); }catch(_){} };
+  el.addEventListener('pointerdown', e=>{ e.preventDefault(); audio(); touch[prop]=true; el.classList.add('on'); try{ el.setPointerCapture(e.pointerId); }catch(_){} });
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('lostpointercapture', release);
+  el.addEventListener('pointerleave', e=>{ if(!el.hasPointerCapture || !el.hasPointerCapture(e.pointerId)) release(e); });
+  el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+function bindAction(el, fn){
+  if(!el) return;
+  let suppressClick=false;
+  const flash=()=>{ el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),130); };
+  const suppress=()=>{ suppressClick=true; setTimeout(()=>suppressClick=false,450); };
+  el.addEventListener('pointerdown', e=>{ e.preventDefault(); suppress(); audio(); fn(); flash(); });
+  el.addEventListener('click', e=>{ if(suppressClick) return; e.preventDefault(); audio(); fn(); flash(); });
+  el.addEventListener('contextmenu', e=>e.preventDefault());
+}
+function handleStart(){ if(state==='menu'||state==='gameover'){ clearTouch(); startGame(); } else if(state==='playing') paused=!paused; }
+function toggleMute(){ muted=!muted; if(!muted) audio(); }
+bindHold(gameButton('.dpad .left'), 'left');
+bindHold(gameButton('.dpad .right'), 'right');
+bindHold(gameButton('.a'), 'fire');
+bindHold(gameButton('.b'), 'fire');
+bindAction(gameButton('.start'), handleStart);
+bindAction(gameButton('.select'), toggleMute);
 function resetGameObjects(){ player.x=W/2-player.w/2; player.y=H-58; player.vx=0; player.cool=0; player.flash=1.4; player.inv=0; clearT=0; hbT=0; ufoSndT=0; bullets=[]; ebullets=[]; particles=[]; bunkers=[]; ufo=null; ufoTimer=12; invDir=1; makeBunkers(); }
 function makeBunkers(){ bunkers=[]; const spacing=140, total=B_W*BUNKERS+spacing*(BUNKERS-1), start=(W-total)/2; for(let b=0;b<BUNKERS;b++){ const x=start+b*(B_W+spacing), y=H-186, cells=[]; for(let r=0;r<B_ROWS;r++)for(let c=0;c<B_COLS;c++){ const notch=r>=4 && c>=4 && c<10; const edge=r<2 && (c<2||c>11); if(!notch && !edge) cells.push({x:x+c*B_CELL,y:y+r*B_CELL,alive:true}); } bunkers.push({x,y,cells}); } }
 function addParticles(x,y,color,count,spd=150){ for(let i=0;i<count;i++){ const a=Math.random()*Math.PI*2, s=spd*(.25+Math.random()); particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:.45+Math.random()*.65,max:1.1,color}); } }
@@ -85,12 +162,12 @@ function loseLife(){ lives--; sfxDie(); addParticles(player.x+player.w/2, player
 function fire(){ if(player.cool>0 || bullets.length>=2) return; sfxFire(); bullets.push({x:player.x+player.w/2-1.5,y:player.y-12,w:3,h:12,vy:-760}); player.cool=.38; addParticles(player.x+player.w/2,player.y-10,'#c8ffed',3,50); }
 function updatePlayer(dt){
   player.vx=0;
-  if(keys.ArrowLeft||keys.a||keys.A) player.vx=-290;
-  if(keys.ArrowRight||keys.d||keys.D) player.vx=290;
+  if(keys.ArrowLeft||keys.a||keys.A||touch.left) player.vx=-290;
+  if(keys.ArrowRight||keys.d||keys.D||touch.right) player.vx=290;
   player.x += player.vx*dt;
   player.x=Math.max(18,Math.min(W-player.w-18,player.x));
   player.cool-=dt; player.flash-=dt; player.inv=Math.max(0,(player.inv||0)-dt);
-  if(keys[' ']) fire();
+  if(keys[' ']||touch.fire) fire();
 }
 function updateBullets(dt){
   for(let i=bullets.length-1;i>=0;i--){
